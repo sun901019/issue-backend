@@ -1,0 +1,81 @@
+==========================================
+後端快速設置指南
+==========================================
+
+【步驟 1】安裝 Poetry
+-------------------
+在 PowerShell 執行：
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+安裝後重新開啟終端，或執行：
+$env:Path += ";$env:USERPROFILE\.local\bin"
+
+驗證：poetry --version
+
+
+【步驟 2】安裝後端依賴
+-------------------
+cd backend
+poetry env use 3.12
+poetry install
+poetry shell
+
+
+【步驟 3】建立 .env 檔案
+-------------------
+1. 複製 env.template 為 .env
+2. 編輯 .env，設定你的 MySQL 密碼：
+   DB_PASSWORD=你的MySQL密碼
+
+
+【步驟 4】建立 MySQL 資料庫
+-------------------
+方法 1 - MySQL 命令列：
+  mysql -u root -p
+  CREATE DATABASE issue_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  EXIT;
+
+方法 2 - MySQL Workbench：
+  開啟 MySQL Workbench，執行：
+  CREATE DATABASE issue_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+方法 3 - 使用 SQL 檔案：
+  mysql -u root -p < backend/create_db.sql
+
+
+【步驟 5】執行資料庫遷移（建表）
+-------------------
+poetry shell
+python manage.py makemigrations
+python manage.py migrate
+
+
+【步驟 6】建立超級使用者（選配）
+-------------------
+python manage.py createsuperuser
+
+
+【步驟 7】啟動開發伺服器
+-------------------
+python manage.py runserver 0.0.0.0:8000
+
+訪問：
+- API 文件: http://localhost:8000/api/docs/
+- Admin: http://localhost:8000/admin/
+
+
+【常見問題】
+-------------------
+1. mysqlclient 安裝失敗？
+   → 使用 PyMySQL（見 INSTALL_NOW.md）
+
+2. Poetry 找不到 Python？
+   → poetry env use C:\Python312\python.exe
+
+3. 資料庫連線失敗？
+   → 檢查 .env 中的 DB_PASSWORD 是否正確
+   → 確認 MySQL 服務已啟動
+   → 確認資料庫已建立
+
+==========================================
+
