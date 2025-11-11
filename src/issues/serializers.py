@@ -4,6 +4,7 @@ Issue serializers.
 
 from typing import Optional
 
+from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Issue,
@@ -38,6 +39,7 @@ class IssueSerializer(serializers.ModelSerializer):
     warranty_info = serializers.SerializerMethodField()
     hardware_warranty_status = serializers.SerializerMethodField()
     software_warranty_status = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(required=False, allow_null=True)
     
     class Meta:
         model = Issue
@@ -51,7 +53,7 @@ class IssueSerializer(serializers.ModelSerializer):
             'customer_warranty_due',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'updated_at']
 
     def get_customer_warranty_due(self, obj):
         customer = obj.customer
@@ -97,9 +99,15 @@ class IssueSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         warranty = validated_data.get('warranty')
+        custom_created_at = validated_data.pop('created_at', None)
         issue = super().create(validated_data)
+        if custom_created_at:
+            issue.created_at = timezone.make_aware(custom_created_at) if timezone.is_naive(custom_created_at) else custom_created_at
         self._apply_warranty_due(issue, warranty)
-        issue.save(update_fields=['warranty_due'])
+        update_fields = ['warranty_due']
+        if custom_created_at:
+            update_fields.append('created_at')
+        issue.save(update_fields=update_fields)
         return issue
 
     def _get_customer_warranties(self, obj: Issue, warranty_type: str):
@@ -128,9 +136,15 @@ class IssueSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         warranty = validated_data.get('warranty', instance.warranty)
+        custom_created_at = validated_data.pop('created_at', None)
         issue = super().update(instance, validated_data)
+        if custom_created_at:
+            issue.created_at = timezone.make_aware(custom_created_at) if timezone.is_naive(custom_created_at) else custom_created_at
         self._apply_warranty_due(issue, warranty)
-        issue.save(update_fields=['warranty_due'])
+        update_fields = ['warranty_due']
+        if custom_created_at:
+            update_fields.append('created_at')
+        issue.save(update_fields=update_fields)
         return issue
 
 

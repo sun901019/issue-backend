@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 from django.db.models import Q
 from .models import Issue, IssueComment, IssueAttachment
 from .serializers import IssueSerializer, IssueDetailSerializer, IssueCommentSerializer, IssueAttachmentSerializer
+from .models import IssueRelation
+from .serializers import IssueRelationSerializer
 
 
 class IssueListView(APIView):
@@ -116,7 +118,7 @@ class IssueDetailView(APIView):
         except Issue.DoesNotExist:
             return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = IssueSerializer(issue, data=request.data)
+        serializer = IssueSerializer(issue, data=request.data, partial=True)
         if serializer.is_valid():
             issue = serializer.save()
             response_serializer = IssueSerializer(issue)
@@ -282,7 +284,7 @@ class IssueCommentView(APIView):
     
     def get(self, request, pk):
         """取得評論列表"""
-        comments = IssueComment.objects.filter(issue_id=pk).order_by('created_at')
+        comments = IssueComment.objects.filter(issue_id=pk).order_by('-created_at')
         serializer = IssueCommentSerializer(comments, many=True)
         return Response(serializer.data)
     
@@ -304,6 +306,105 @@ class IssueCommentView(APIView):
             serializer.save(issue=issue, author=author)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class IssueCommentDetailView(APIView):
+    """單筆評論管理"""
+
+    def put(self, request, pk, comment_id):
+        try:
+            comment = IssueComment.objects.get(pk=comment_id, issue_id=pk)
+        except IssueComment.DoesNotExist:
+            return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = IssueCommentSerializer(comment, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk, comment_id):
+        try:
+            comment = IssueComment.objects.get(pk=comment_id, issue_id=pk)
+        except IssueComment.DoesNotExist:
+            return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        comment.delete()
+        return Response({'success': True}, status=status.HTTP_204_NO_CONTENT)
+
+
+class IssueRelationView(APIView):
+    """Issue 關聯管理"""
+
+    reverse_map = {
+        'relates': 'relates',
+        'duplicates': 'duplicates',
+    }
+
+    def get(self, request, pk):
+        relations = IssueRelation.objects.filter(issue_id=pk).select_related('related_issue')
+        serializer = IssueRelationSerializer(relations, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, pk):
+        try:
+            issue = Issue.objects.get(pk=pk)
+        except Issue.DoesNotExist:
+            return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        related_issue_id = request.data.get('related_issue')
+        relation_type = request.data.get('relation_type')
+
+        if not related_issue_id or not relation_type:
+            return Response({'error': 'related_issue 和 relation_type 為必填'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if int(related_issue_id) == issue.id:
+            return Response({'error': '無法與自己建立關聯'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            related_issue = Issue.objects.get(pk=related_issue_id)
+        except Issue.DoesNotExist:
+            return Response({'error': 'Related issue not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if relation_type not in dict(IssueRelation.RELATION_TYPES):
+            return Response({'error': '無效的 relation_type'}, status=status.HTTP_400_BAD_REQUEST)
+
+        relation, created = IssueRelation.objects.get_or_create(
+            issue=issue,
+            related_issue=related_issue,
+            relation_type=relation_type,
+        )
+        reverse_type = self.reverse_map.get(relation_type, 'relates')
+        IssueRelation.objects.get_or_create(
+            issue=related_issue,
+            related_issue=issue,
+            relation_type=reverse_type,
+        )
+
+        serializer = IssueRelationSerializer(relation)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class IssueRelationDetailView(APIView):
+    """單筆關聯管理"""
+
+    reverse_map = IssueRelationView.reverse_map
+
+    def delete(self, request, pk, relation_id):
+        try:
+            relation = IssueRelation.objects.get(pk=relation_id, issue_id=pk)
+        except IssueRelation.DoesNotExist:
+            return Response({'error': 'Relation not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        reverse_type = self.reverse_map.get(relation.relation_type, 'relates')
+        IssueRelation.objects.filter(
+            issue=relation.related_issue,
+            related_issue=relation.issue,
+            relation_type=reverse_type,
+        ).delete()
+
+        relation.delete()
+        return Response({'success': True}, status=status.HTTP_204_NO_CONTENT)
 
 
 class IssueImportView(APIView):

@@ -184,7 +184,7 @@ class IssueComment(models.Model):
     
     class Meta:
         db_table = 'issue_comments'
-        ordering = ['created_at']
+        ordering = ['-created_at']
         indexes = [
             models.Index(fields=['issue', 'created_at']),
         ]
@@ -238,8 +238,6 @@ class IssueRelation(models.Model):
     RELATION_TYPES = [
         ('relates', '相關'),
         ('duplicates', '重複'),
-        ('blocks', '阻擋'),
-        ('is_blocked_by', '被阻擋'),
     ]
     
     issue = models.ForeignKey(Issue, on_delete=models.CASCADE, related_name='relations')
