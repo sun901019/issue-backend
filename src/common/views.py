@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
 from issues.models import Customer
+from issues.serializers import CustomerSerializer
 
 
 class UserListView(APIView):
@@ -28,28 +29,12 @@ class CustomerListView(APIView):
     """客戶列表（用於下拉選單和 Custom 頁面）"""
     
     def get(self, request):
-        customers = Customer.objects.all().order_by('name')
-        return Response([
-            {
-                'id': customer.id,
-                'name': customer.name,
-                'code': customer.code,
-                'contact_person': customer.contact_person,
-                'contact_email': customer.contact_email,
-                'business_owner': customer.business_owner,
-                'handover_completed': customer.handover_completed,
-                'training_completed': customer.training_completed,
-                'internal_network_connected': customer.internal_network_connected,
-                'warranty_due': customer.warranty_due,
-                'created_at': customer.created_at,
-                'updated_at': customer.updated_at,
-            }
-            for customer in customers
-        ])
+        customers = Customer.objects.prefetch_related('warranties').all().order_by('name')
+        serializer = CustomerSerializer(customers, many=True)
+        return Response(serializer.data)
     
     def post(self, request):
         """創建客戶"""
-        from issues.serializers import CustomerSerializer
         serializer = CustomerSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -77,7 +62,6 @@ class CustomerDetailView(APIView):
         except Customer.DoesNotExist:
             return Response({'error': 'Customer not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        from issues.serializers import CustomerSerializer
         serializer = CustomerSerializer(customer, data=request.data)
         if serializer.is_valid():
             serializer.save()

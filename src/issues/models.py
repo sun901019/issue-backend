@@ -34,7 +34,7 @@ class Customer(models.Model):
     handover_completed = models.BooleanField(default=False, verbose_name='點交驗收完成')
     training_completed = models.BooleanField(default=False, verbose_name='教育訓練完成')
     internal_network_connected = models.BooleanField(default=False, verbose_name='接回內網')
-    warranty_due = models.DateTimeField(null=True, blank=True, verbose_name='保固日期')
+    warranty_due = models.DateTimeField(null=True, blank=True, verbose_name='保固日期')  # TODO: Deprecated, kept for backward compatibility
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -45,6 +45,30 @@ class Customer(models.Model):
     
     def __str__(self):
         return self.name
+
+
+class CustomerWarranty(TimestampedModel):
+    """客戶保固批次"""
+
+    TYPE_HARDWARE = 'hardware'
+    TYPE_SOFTWARE = 'software'
+    TYPE_CHOICES = [
+        (TYPE_HARDWARE, '硬體'),
+        (TYPE_SOFTWARE, '軟體'),
+    ]
+
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='warranties')
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    title = models.CharField(max_length=255, help_text='批次或保固描述，例如：主系統 + 3 感測器')
+    end_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'customer_warranties'
+        ordering = ['end_date', 'id']
+
+    def __str__(self):
+        return f"{self.customer.name} - {self.title}"
 
 
 class Site(models.Model):
@@ -115,6 +139,7 @@ class Issue(TimestampedModel):
     warranty_due = models.DateTimeField(null=True, blank=True)
     first_response_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    warranty = models.ForeignKey(CustomerWarranty, on_delete=models.SET_NULL, null=True, blank=True, related_name='issues')
     
     class Meta:
         db_table = 'issues'

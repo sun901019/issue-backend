@@ -119,94 +119,81 @@ class ReportTrendView(APIView):
     """趨勢報表"""
     
     def get(self, request):
-        from django.db.models import Count, Q
-        from django.utils import timezone
-        from datetime import timedelta
+        """
+        依照 period 取得趨勢資料：
+        - month：指定年份的 1~12 月建立數
+        - week：指定年月的每週建立數（週區間限制在該月）
+        - day：指定年月的每日建立數
+        """
         import pendulum
-        
+        from django.utils import timezone
+
         period = request.query_params.get('period', 'month')  # month/week/day
-        date_from = request.query_params.get('from')
-        date_to = request.query_params.get('to')
-        
-        # 設定日期範圍
-        if date_from:
-            start_date = pendulum.parse(date_from)
-        else:
-            start_date = pendulum.now().subtract(months=6)
-        
-        if date_to:
-            end_date = pendulum.parse(date_to)
-        else:
-            end_date = pendulum.now()
-        
-        # 根據期間類型生成時間點
-        data_points = []
-        current = start_date
-        
-        if period == 'day':
-            while current <= end_date:
-                data_points.append(current.format('YYYY-MM-DD'))
-                current = current.add(days=1)
-        elif period == 'week':
-            while current <= end_date:
-                week_start = current.start_of('week')
-                data_points.append(week_start.format('YYYY-MM-DD'))
-                current = current.add(weeks=1)
-        else:  # month
-            while current <= end_date:
-                month_start = current.start_of('month')
-                data_points.append(month_start.format('YYYY-MM'))
-                current = current.add(months=1)
-        
-        # 查詢每個時間點的 Issue 數量
+        now = pendulum.instance(timezone.now())
+
+        # 取得查詢的年份／月份（若未指定則使用目前時間）
+        year = int(request.query_params.get('year', now.year))
+        month = int(request.query_params.get('month', now.month))
+
+        tz = now.timezone
         trend_data = []
-        for point in data_points:
-            if period == 'day':
-                date_obj = pendulum.parse(point)
-                day_start = date_obj.start_of('day').to_datetime_string()
-                day_end = date_obj.end_of('day').to_datetime_string()
-                created_count = Issue.objects.filter(
-                    created_at__gte=day_start,
-                    created_at__lte=day_end
-                ).count()
-                closed_count = Issue.objects.filter(
-                    status='Closed',
-                    resolved_at__gte=day_start,
-                    resolved_at__lte=day_end
-                ).count()
-            elif period == 'week':
-                date_obj = pendulum.parse(point)
-                week_start = date_obj.start_of('week').to_datetime_string()
-                week_end = date_obj.end_of('week').to_datetime_string()
-                created_count = Issue.objects.filter(
-                    created_at__gte=week_start,
-                    created_at__lte=week_end
-                ).count()
-                closed_count = Issue.objects.filter(
-                    status='Closed',
-                    resolved_at__gte=week_start,
-                    resolved_at__lte=week_end
-                ).count()
-            else:  # month
-                date_obj = pendulum.parse(point + '-01')
-                month_start = date_obj.start_of('month').to_datetime_string()
-                month_end = date_obj.end_of('month').to_datetime_string()
+
+        if period == 'month':
+            # 1 ~ 12 月
+            for m in range(1, 13):
+                month_start = pendulum.datetime(year, m, 1, tz=tz)
+                next_month = month_start.add(months=1)
                 created_count = Issue.objects.filter(
                     created_at__gte=month_start,
-                    created_at__lte=month_end
+                    created_at__lt=next_month
                 ).count()
-                closed_count = Issue.objects.filter(
-                    status='Closed',
-                    resolved_at__gte=month_start,
-                    resolved_at__lte=month_end
+                trend_data.append({
+                    'period': f'{m}月',
+                    'created': created_count,
+                })
+        elif period == 'week':
+            # 指定月份的每週
+            month_start = pendulum.datetime(year, month, 1, tz=tz)
+            month_end = month_start.end_of('month')
+            current_start = month_start
+            week_index = 1
+
+            while current_start <= month_end:
+                next_start = current_start.add(days=7)
+                if next_start > month_end.add(days=1):
+                    next_start = month_end.add(days=1)
+
+                created_count = Issue.objects.filter(
+                    created_at__gte=current_start,
+                    created_at__lt=next_start
                 ).count()
-            
-            trend_data.append({
-                'period': point,
-                'created': created_count,
-                'closed': closed_count,
-            })
-        
+
+                trend_data.append({
+                    'period': f'第{week_index}週',
+                    'created': created_count,
+                })
+
+                week_index += 1
+                current_start = next_start
+        else:  # day
+            month_start = pendulum.datetime(year, month, 1, tz=tz)
+            month_end = month_start.end_of('month')
+            current_day = month_start
+
+            while current_day <= month_end:
+                next_day = current_day.add(days=1)
+                created_count = Issue.objects.filter(
+                    created_at__gte=current_day,
+                    created_at__lt=next_day
+                ).count()
+
+                trend_data.append({
+                    'period': current_day.format('MM/DD'),
+                    'created': created_count,
+                })
+
+                current_day = next_day
+
         return Response({
             'period': period,
             'data': trend_data,

@@ -15,7 +15,11 @@ class IssueListView(APIView):
     """Issue 列表與查詢"""
     
     def get(self, request):
-        queryset = Issue.objects.all()
+        queryset = (
+            Issue.objects.all()
+            .select_related('project', 'customer', 'assignee', 'reporter', 'warranty')
+            .prefetch_related('customer__warranties')
+        )
         
         # 篩選條件
         if status_list := request.query_params.getlist('status[]'):
@@ -75,7 +79,6 @@ class IssueListView(APIView):
         """建立 Issue"""
         serializer = IssueSerializer(data=request.data)
         if serializer.is_valid():
-            # 如果沒有指定 reporter，使用當前用戶或第一個用戶
             issue = serializer.save()
             if not issue.reporter:
                 from django.contrib.auth.models import User
@@ -83,7 +86,8 @@ class IssueListView(APIView):
                 if first_user:
                     issue.reporter = first_user
                     issue.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            response_serializer = IssueSerializer(issue)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -92,7 +96,13 @@ class IssueDetailView(APIView):
     
     def get(self, request, pk):
         try:
-            issue = Issue.objects.get(pk=pk)
+            issue = (
+                Issue.objects.select_related(
+                    'project', 'customer', 'assignee', 'reporter', 'warranty'
+                )
+                .prefetch_related('customer__warranties')
+                .get(pk=pk)
+            )
         except Issue.DoesNotExist:
             return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -108,8 +118,9 @@ class IssueDetailView(APIView):
         
         serializer = IssueSerializer(issue, data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            issue = serializer.save()
+            response_serializer = IssueSerializer(issue)
+            return Response(response_serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
