@@ -34,7 +34,10 @@ class DashboardSummaryView(APIView):
         avg_mttr = calculate_avg_mttr(all_issues.filter(status='Closed'))
         
         # 計算完成率
-        completion_rate = round((closed_count / total_count * 100) if total_count > 0 else 0, 1)
+        completion_rate = round((closed_count / total_count * 100), 1) if total_count > 0 else 0
+        open_rate = round((open_count / total_count * 100), 1) if total_count > 0 else 0
+        in_progress_rate = round((in_progress_count / total_count * 100), 1) if total_count > 0 else 0
+        pending_rate = round((pending_count / total_count * 100), 1) if total_count > 0 else 0
         
         # 計算7天趨勢（用於迷你圖表）
         now = timezone.now()
@@ -77,6 +80,9 @@ class DashboardSummaryView(APIView):
             'avg_frt': round(avg_frt, 2) if avg_frt else None,
             'avg_mttr': round(avg_mttr, 2) if avg_mttr else None,
             'completion_rate': completion_rate,
+            'open_rate': open_rate,
+            'in_progress_rate': in_progress_rate,
+            'pending_rate': pending_rate,
             'trend_7days': trend_data,
             'change_percentage': change_percentage,
         })

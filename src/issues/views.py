@@ -4,13 +4,18 @@ Issue views.
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q
-from .models import Issue, IssueComment, IssueAttachment
-from .serializers import IssueSerializer, IssueDetailSerializer, IssueCommentSerializer, IssueAttachmentSerializer
-from .models import IssueRelation
-from .serializers import IssueRelationSerializer
+from .models import Issue, IssueComment, IssueAttachment, IssueCommentAttachment, IssueRelation
+from .serializers import (
+    IssueSerializer,
+    IssueDetailSerializer,
+    IssueCommentSerializer,
+    IssueAttachmentSerializer,
+    IssueRelationSerializer,
+)
 
 
 class IssueListView(APIView):
@@ -102,13 +107,13 @@ class IssueDetailView(APIView):
                 Issue.objects.select_related(
                     'project', 'customer', 'assignee', 'reporter', 'warranty'
                 )
-                .prefetch_related('customer__warranties')
+                .prefetch_related('customer__warranties', 'comments__attachments', 'comments__attachments__uploaded_by')
                 .get(pk=pk)
             )
         except Issue.DoesNotExist:
             return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = IssueDetailSerializer(issue)
+        serializer = IssueDetailSerializer(issue, context={'request': request})
         return Response(serializer.data)
     
     def put(self, request, pk):
@@ -282,10 +287,12 @@ class IssueAttachmentView(APIView):
 class IssueCommentView(APIView):
     """評論管理"""
     
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    
     def get(self, request, pk):
         """取得評論列表"""
         comments = IssueComment.objects.filter(issue_id=pk).order_by('-created_at')
-        serializer = IssueCommentSerializer(comments, many=True)
+        serializer = IssueCommentSerializer(comments, many=True, context={'request': request})
         return Response(serializer.data)
     
     def post(self, request, pk):
@@ -301,10 +308,21 @@ class IssueCommentView(APIView):
             from django.contrib.auth.models import User
             author = issue.reporter or User.objects.first()
         
-        serializer = IssueCommentSerializer(data=request.data)
+        data = request.data.copy()
+        data.pop('attachments', None)
+        serializer = IssueCommentSerializer(data=data)
         if serializer.is_valid():
-            serializer.save(issue=issue, author=author)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            comment = serializer.save(issue=issue, author=author)
+            files = request.FILES.getlist('attachments')
+            for file in files:
+                IssueCommentAttachment.objects.create(
+                    comment=comment,
+                    file=file,
+                    filename=file.name,
+                    uploaded_by=request.user if request.user.is_authenticated else author,
+                )
+            response_serializer = IssueCommentSerializer(comment, context={'request': request})
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -317,10 +335,13 @@ class IssueCommentDetailView(APIView):
         except IssueComment.DoesNotExist:
             return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = IssueCommentSerializer(comment, data=request.data, partial=True)
+        data = request.data.copy()
+        data.pop('attachments', None)
+        serializer = IssueCommentSerializer(comment, data=data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            comment = serializer.save()
+            response_serializer = IssueCommentSerializer(comment, context={'request': request})
+            return Response(response_serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk, comment_id):

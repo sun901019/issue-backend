@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     Issue,
     IssueComment,
+    IssueCommentAttachment,
     IssueAttachment,
     IssueSubtask,
     IssueRelation,
@@ -168,14 +169,35 @@ class IssueRelationSerializer(serializers.ModelSerializer):
         fields = ['id', 'related_issue', 'related_issue_title', 'relation_type', 'created_at']
 
 
+class IssueCommentAttachmentSerializer(serializers.ModelSerializer):
+    """評論附件序列化器"""
+
+    uploaded_by_name = serializers.CharField(source='uploaded_by.username', read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IssueCommentAttachment
+        fields = ['id', 'filename', 'file', 'file_url', 'uploaded_by', 'uploaded_by_name', 'created_at']
+        read_only_fields = ['id', 'created_at', 'uploaded_by', 'uploaded_by_name']
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+
 class IssueCommentSerializer(serializers.ModelSerializer):
     """評論序列化器"""
     
     author_name = serializers.CharField(source='author.username', read_only=True)
+    attachments = IssueCommentAttachmentSerializer(many=True, read_only=True)
     
     class Meta:
         model = IssueComment
-        fields = ['id', 'author', 'author_name', 'body', 'mentions', 'created_at']
+        fields = ['id', 'author', 'author_name', 'body', 'mentions', 'attachments', 'created_at']
 
 
 class CustomerWarrantySerializer(serializers.ModelSerializer):
@@ -313,6 +335,26 @@ class IssueAttachmentSerializer(serializers.ModelSerializer):
     
     def get_file_url(self, obj):
         """取得檔案 URL"""
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+
+class IssueCommentAttachmentSerializer(serializers.ModelSerializer):
+    """評論附件序列化器"""
+
+    uploaded_by_name = serializers.CharField(source='uploaded_by.username', read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IssueCommentAttachment
+        fields = ['id', 'filename', 'file', 'file_url', 'uploaded_by', 'uploaded_by_name', 'created_at']
+        read_only_fields = ['id', 'created_at', 'uploaded_by', 'uploaded_by_name']
+
+    def get_file_url(self, obj):
         if obj.file:
             request = self.context.get('request')
             if request:

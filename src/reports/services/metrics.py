@@ -27,11 +27,17 @@ def calculate_frt(issue: Issue) -> Optional[float]:
         
         created = pendulum.instance(issue.created_at)
         activity = pendulum.instance(first_activity)
-        return (activity - created).total_hours()
+        hours = (activity - created).total_hours()
+        if hours < 0:
+            return None
+        return hours
     
     created = pendulum.instance(issue.created_at)
     first_response = pendulum.instance(issue.first_response_at)
-    return (first_response - created).total_hours()
+    hours = (first_response - created).total_hours()
+    if hours < 0:
+        return None
+    return hours
 
 
 def calculate_mttr(issue: Issue) -> Optional[float]:

@@ -193,6 +193,22 @@ class IssueComment(models.Model):
         return f"Comment on {self.issue.title}"
 
 
+class IssueCommentAttachment(models.Model):
+    """評論附件"""
+    comment = models.ForeignKey(IssueComment, on_delete=models.CASCADE, related_name='attachments')
+    filename = models.CharField(max_length=255)
+    file = models.FileField(upload_to='comment_attachments/%Y/%m/%d/', max_length=500)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='uploaded_comment_attachments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'issue_comment_attachments'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return self.filename
+
+
 class IssueAttachment(models.Model):
     """附件"""
     issue = models.ForeignKey(Issue, on_delete=models.CASCADE, related_name='attachments')
